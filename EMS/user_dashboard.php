@@ -147,6 +147,27 @@ $users = $result->fetch_all(MYSQLI_ASSOC);
             color: white;
             font-size: 24px;
         }
+
+        .action-btn {
+            padding: 8px 12px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: white;
+        }
+
+        .update-btn {
+            background-color: #28a745;
+        }
+
+        .delete-btn {
+            background-color: #dc3545;
+        }
+
+        .action-btn:hover {
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
@@ -163,6 +184,7 @@ $users = $result->fetch_all(MYSQLI_ASSOC);
 </nav>
 
 <div class="container">
+    <!-- Your existing status boxes and add user form -->
     <div class="status-box">
         Electromagnetic Lock is: <span id="lockStatus" style="color: red;">Loading...</span>
     </div>
@@ -180,7 +202,6 @@ $users = $result->fetch_all(MYSQLI_ASSOC);
         <input type="time" name="schedule_start" id="schedule_start" required>
         <input type="time" name="schedule_end" id="schedule_end" required>
         <button type="submit" id="addUserBtn">Add User</button>
-
     </form>
 
     <div class="modal" id="waitingModal">
@@ -202,28 +223,19 @@ $users = $result->fetch_all(MYSQLI_ASSOC);
                 <th>Actions</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="usersTableBody">
             <?php foreach ($users as $user): ?>
-                <tr>
-                
-                    <form method="POST" action="api/users.php">
-                        <td><?php echo $user['id']; ?></td>
-                        <td><input type="text" name="uid" value="<?php echo $user['uid']; ?>" required></td>
-                        <td><input type="text" name="name" value="<?php echo $user['name']; ?>" required></td>
-                        <td><input type="text" name="username" value="<?php echo $user['username']; ?>" required></td>
-                        <td><input type="time" name="schedule_start" value="<?php echo $user['schedule_start']; ?>" required></td>
-                        <td><input type="time" name="schedule_end" value="<?php echo $user['schedule_end']; ?>" required></td>
-                        <td>
-                            <input type="hidden" name="action" value="update">
-                            <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
-                            <button type="submit">Update</button>
-                    </form>
-                    <form method="POST" action="api/users.php" style="display:inline;">
-                        <input type="hidden" name="action" value="delete">
-                        <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
-                        <button type="submit">Delete</button>
-                    </form>
-                        </td>
+                <tr data-user-id="<?php echo $user['id']; ?>">
+                    <td><?php echo $user['id']; ?></td>
+                    <td><input type="text" class="uid-input" value="<?php echo htmlspecialchars($user['uid']); ?>" required></td>
+                    <td><input type="text" class="name-input" value="<?php echo htmlspecialchars($user['name']); ?>" required></td>
+                    <td><input type="text" class="username-input" value="<?php echo htmlspecialchars($user['username']); ?>" required></td>
+                    <td><input type="time" class="schedule-start-input" value="<?php echo htmlspecialchars($user['schedule_start']); ?>" required></td>
+                    <td><input type="time" class="schedule-end-input" value="<?php echo htmlspecialchars($user['schedule_end']); ?>" required></td>
+                    <td>
+                        <button class="action-btn update-btn" data-user-id="<?php echo $user['id']; ?>">Update</button>
+                        <button class="action-btn delete-btn" data-user-id="<?php echo $user['id']; ?>">Delete</button>
+                    </td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
@@ -235,99 +247,174 @@ function updateStatus() {
     fetch("api/fetch_updates.php")
         .then(response => response.json())
         .then(data => {
-            const lockStatusEl = document.getElementById("lockStatus");
-            const scanStatusEl = document.getElementById("scanStatus");
-            const scanTimestampEl = document.getElementById("scanTimestamp");
-
-            lockStatusEl.textContent = data.lock_status || "Unavailable";
-            lockStatusEl.style.color = (data.lock_status === "Unlocked") ? "green" : "red";
-
+            document.getElementById("lockStatus").textContent = data.lock_status || "Unavailable";
+            document.getElementById("lockStatus").style.color = (data.lock_status === "Unlocked") ? "green" : "red";
+            
             if (data.last_log) {
-                scanStatusEl.textContent = data.last_log.status || "No recent scans";
-                scanTimestampEl.textContent = data.last_log.timestamp || "";
-            } else {
-                scanStatusEl.textContent = "No recent scans";
-                scanTimestampEl.textContent = "";
+                document.getElementById("scanStatus").textContent = data.last_log.status || "No recent scans";
+                document.getElementById("scanTimestamp").textContent = data.last_log.timestamp || "";
             }
         })
         .catch(error => {
             console.error("Fetch error:", error);
-            document.getElementById("lockStatus").textContent = "Error";
-            document.getElementById("scanStatus").textContent = "Error";
-            document.getElementById("scanTimestamp").textContent = "";
         });
 }
 
-window.onload = () => {
-    updateStatus();
-    setInterval(updateStatus, 1000);
-};
-
-document.getElementById("addUserForm").addEventListener("submit", function(e) {
-    e.preventDefault();
-    const modal = document.getElementById("waitingModal");
-    modal.style.display = "block";
-
-    const startTime = new Date().toISOString();
-    let attempts = 0;
-    const maxAttempts = 20;
-
-    const interval = setInterval(() => {
-        fetch("api/get_latest_uid.php?after=" + encodeURIComponent(startTime))
-            .then(res => res.json())
-            .then(data => {
-                if (data.uid && data.uid !== "null") {
-                    clearInterval(interval);
-                    modal.style.display = "none";
-
-                    const formData = new FormData();
-                    formData.append("action", "add");
-                    formData.append("uid", data.uid);
-                    formData.append("name", document.getElementById("name").value);
-                    formData.append("username", document.getElementById("username").value);
-                    formData.append("password", document.getElementById("password").value);
-                    formData.append("schedule_start", document.getElementById("schedule_start").value);
-                    formData.append("schedule_end", document.getElementById("schedule_end").value);
-
-                    fetch("api/users.php", {
-                        method: "POST",
-                        body: formData
-                    })
-                    .then(res => res.json())
-                    .then(res => {
-                        alert(res.message);
-                        if (res.success) location.reload();
-                    })
-                    .catch(() => alert("Failed to add user."));
-                }
-            });
-
-            document.getElementById('addUserBtn').addEventListener('click', () => {
-  fetch('api/users.php')
-    .then(res => res.text())
-    .then(msg => alert(msg));
-});
-
-        attempts++;
-        if (attempts >= maxAttempts) {
-            clearInterval(interval);
-            modal.style.display = "none";
-            alert("No card scanned. Try again.");
-        }
-    }, 3000);
-});
-
+// Function to load users
 function loadUsers() {
-  fetch('api/get_users.php')
-    .then(res => res.text())
+    fetch('api/get_users.php')
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById("usersTableBody").innerHTML = html;
+            attachButtonListeners(); // Reattach event listeners after table update
+        })
+        .catch(error => console.error('Error loading users:', error));
+}
+
+// Function to handle update
+function handleUpdate(userId) {
+    const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+    const formData = new FormData();
+    
+    formData.append('action', 'update');
+    formData.append('id', userId);
+    formData.append('uid', row.querySelector('.uid-input').value);
+    formData.append('name', row.querySelector('.name-input').value);
+    formData.append('username', row.querySelector('.username-input').value);
+    formData.append('schedule_start', row.querySelector('.schedule-start-input').value);
+    formData.append('schedule_end', row.querySelector('.schedule-end-input').value);
+
+    fetch('api/users.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
     .then(data => {
-      document.getElementById('usersTable').innerHTML = data;
+        if (data.success) {
+            alert('User updated successfully');
+            loadUsers(); // Refresh the table
+        } else {
+            alert(data.message || 'Update failed');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Update error');
     });
 }
 
-// Load initially and refresh every 5 seconds
-loadUsers();
-setInterval(loadUsers, 1000);
+// Function to handle delete
+function handleDelete(userId) {
+    if (!confirm('Are you sure you want to delete this user?')) return;
+    
+    const formData = new FormData();
+    formData.append('action', 'delete');
+    formData.append('id', userId);
+
+    fetch('api/users.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('User deleted successfully');
+            loadUsers(); // Refresh the table
+        } else {
+            alert(data.message || 'Delete failed');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Delete error');
+    });
+}
+
+// Function to attach button listeners
+function attachButtonListeners() {
+    // Update buttons
+    document.querySelectorAll('.update-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleUpdate(btn.getAttribute('data-user-id'));
+        });
+    });
+
+    // Delete buttons
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleDelete(btn.getAttribute('data-user-id'));
+        });
+    });
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Initial load
+    updateStatus();
+    loadUsers();
+    attachButtonListeners();
+
+    // Set intervals
+    setInterval(updateStatus, 1000);
+    setInterval(loadUsers, 5000);
+
+    // Add user form
+    document.getElementById("addUserForm").addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const modal = document.getElementById("waitingModal");
+        modal.style.display = "block";
+        
+        try {
+            // Clear any previous UID
+            await fetch("api/clear_temp_uid.php");
+            
+            // Wait for scan
+            const startTime = new Date().toISOString();
+            let uid = null;
+            
+            for (let attempts = 0; attempts < 20 && !uid; attempts++) {
+                const response = await fetch(`api/get_new_uid.php?after=${encodeURIComponent(startTime)}`);
+                const data = await response.json();
+                if (data.uid && data.uid !== "null") {
+                    uid = data.uid;
+                    break;
+                }
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            if (!uid) throw new Error("No card scanned within 10 seconds");
+            
+            // Submit user data
+            const formData = new FormData();
+            formData.append("action", "add");
+            formData.append("uid", uid);
+            formData.append("name", document.getElementById("name").value);
+            formData.append("username", document.getElementById("username").value);
+            formData.append("password", document.getElementById("password").value);
+            formData.append("schedule_start", document.getElementById("schedule_start").value);
+            formData.append("schedule_end", document.getElementById("schedule_end").value);
+            
+            const response = await fetch("api/users.php", {
+                method: "POST",
+                body: formData
+            });
+            
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message);
+            
+            alert("User added successfully!");
+            document.getElementById("addUserForm").reset();
+            loadUsers(); // Refresh the table
+        } catch (error) {
+            alert(error.message);
+            console.error("Error:", error);
+        } finally {
+            modal.style.display = "none";
+        }
+    });
+});
 </script>
 
 </body>
